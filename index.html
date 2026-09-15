@@ -1,0 +1,976 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#01101C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Escape the Great White - swim, collect pearls, dodge the shark.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%88%3C/text%3E%3C/svg%3E">
+<title>Escape the Great White</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700&display=swap">
+
+<style>
+  :root{
+    --abyss:#01101C;
+    --deep:#0A2E45;
+    --water:#0E6A92;
+    --shallow:#6FE3E0;
+    --sun:#FFE9A8;
+    --coral:#FF6B4A;
+    --kelp:#1F7A55;
+    --foam:#EAF7F7;
+    --ink:#03202F;
+    --display:"Fredoka","Trebuchet MS",system-ui,sans-serif;
+    --body:"Nunito","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{width:100%;max-width:100%;overflow:hidden}
+  body{
+    margin:0;
+    background:var(--abyss);
+    color:var(--foam);
+    font-family:var(--body);
+    min-height:100dvh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
+    user-select:none;
+  }
+
+  .stage{
+    position:relative;
+    width:min(100%, calc(100dvh * 450 / 800));
+    aspect-ratio:450/800;
+    overflow:hidden;
+    background:var(--deep);
+    box-shadow:0 0 80px rgba(0,0,0,.6);
+  }
+  canvas{display:block;width:100%;height:100%;touch-action:none}
+
+  /* ---------- HUD ---------- */
+  .hud[hidden]{display:none}
+  .hud{
+    position:absolute;inset:0 0 auto 0;
+    display:flex;align-items:center;gap:clamp(8px,2.5vw,14px);
+    padding:clamp(10px,3vw,16px);
+    font-family:var(--display);
+    pointer-events:none;
+    text-shadow:0 2px 6px rgba(1,16,28,.65);
+  }
+  .hud__level{
+    font-size:clamp(15px,4.4vw,22px);font-weight:600;letter-spacing:.06em;
+    line-height:1;
+  }
+  .hud__lives{display:flex;gap:clamp(3px,1.2vw,6px);margin-left:auto}
+  .heart{width:clamp(18px,5vw,26px);height:clamp(18px,5vw,26px);display:block}
+  .heart path{fill:var(--coral);transition:fill .25s}
+  .heart.spent path{fill:rgba(234,247,247,.16)}
+  .hud__pearls{
+    display:flex;align-items:center;gap:.4em;
+    font-size:clamp(15px,4.4vw,22px);font-weight:600;
+    font-variant-numeric:tabular-nums;
+  }
+  .hud__pearls .dot{
+    width:clamp(11px,3vw,15px);height:clamp(11px,3vw,15px);border-radius:50%;
+    background:var(--sun);box-shadow:0 0 10px rgba(255,233,168,.9);
+  }
+
+  .mute{
+    pointer-events:auto;position:absolute;right:clamp(10px,3vw,16px);
+    bottom:clamp(10px,3vw,16px);
+    width:clamp(34px,9vw,42px);height:clamp(34px,9vw,42px);border-radius:50%;
+    border:1.5px solid rgba(234,247,247,.28);
+    background:rgba(1,16,28,.42);color:var(--foam);
+    font-size:clamp(15px,4vw,19px);line-height:1;cursor:pointer;
+    display:grid;place-items:center;backdrop-filter:blur(3px);
+  }
+  .mute:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+
+  /* ---------- Overlay cards ---------- */
+  .overlay{
+    position:absolute;inset:0;display:grid;place-items:center;
+    pointer-events:none;                 /* the water stays touchable underneath */
+    padding:clamp(20px,7vw,40px);text-align:center;
+    background:radial-gradient(ellipse at 50% 42%, rgba(1,16,28,.34), rgba(1,16,28,.72));
+    backdrop-filter:blur(2px);
+    opacity:0;visibility:hidden;transition:opacity .35s ease;
+  }
+  .overlay.show{opacity:1;visibility:visible}
+  .overlay.bare{background:none;backdrop-filter:none}
+  /* the title water is playable, so keep it sharp — scrim only where the type sits */
+  #ovTitle{
+    backdrop-filter:none;
+    background:linear-gradient(180deg,
+      rgba(1,16,28,.62) 0%, rgba(1,16,28,.42) 34%,
+      rgba(1,16,28,.12) 56%, rgba(1,16,28,0) 72%);
+    align-content:start;padding-top:28dvh;
+  }
+
+  .card{max-width:34ch;display:flex;flex-direction:column;align-items:center;gap:clamp(10px,3vw,16px)}
+
+  h1{
+    font-family:var(--display);font-weight:700;
+    font-size:clamp(34px,10.5vw,54px);line-height:.92;letter-spacing:-.015em;
+    margin:0;text-wrap:balance;
+    text-shadow:0 4px 22px rgba(1,16,28,.7);
+  }
+  h1 .white{color:var(--foam)}
+  h1 .great{
+    display:block;color:var(--coral);
+    text-shadow:0 0 28px rgba(255,107,74,.45);
+  }
+  h2{
+    font-family:var(--display);font-weight:700;
+    font-size:clamp(28px,8.5vw,42px);line-height:1;margin:0;text-wrap:balance;
+  }
+  .stat{
+    font-family:var(--display);font-weight:700;margin:0;
+    font-size:clamp(26px,8vw,38px);line-height:1;color:var(--sun);
+  }
+
+  .btn{
+    pointer-events:auto;font-family:var(--display);font-weight:600;
+    font-size:clamp(16px,4.6vw,20px);letter-spacing:.02em;
+    padding:.7em 1.7em;border-radius:999px;border:none;cursor:pointer;
+    background:var(--coral);color:#25060A;
+    box-shadow:0 6px 0 #A83B26, 0 12px 30px rgba(255,107,74,.3);
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #A83B26, 0 6px 18px rgba(255,107,74,.25)}
+  .btn:focus-visible{outline:3px solid var(--sun);outline-offset:3px}
+
+  .zone{
+    font-family:var(--display);font-weight:500;letter-spacing:.2em;
+    text-transform:uppercase;font-size:clamp(11px,3.1vw,14px);
+    color:var(--sun);opacity:.9;
+  }
+  .best{
+    font-family:var(--display);font-size:clamp(12px,3.3vw,15px);
+    letter-spacing:.1em;color:rgba(234,247,247,.55);text-transform:uppercase;
+  }
+  .depthbar{
+    width:min(220px,60%);height:5px;border-radius:99px;
+    background:rgba(234,247,247,.16);overflow:hidden;
+  }
+  .depthbar i{display:block;height:100%;background:linear-gradient(90deg,var(--shallow),var(--coral));border-radius:99px}
+
+  .go{
+    position:absolute;inset:0;display:grid;place-items:center;
+    font-family:var(--display);font-weight:700;font-size:clamp(56px,17vw,90px);
+    color:var(--sun);text-shadow:0 0 18px rgba(255,200,90,.9), 0 0 52px rgba(255,190,70,.6), 0 3px 0 rgba(120,60,10,.35);
+    opacity:0;pointer-events:none;
+  }
+  .go.fire{animation:goflash .75s ease-out}
+  @keyframes goflash{
+    0%{opacity:0;transform:scale(.6)}
+    25%{opacity:1;transform:scale(1.04)}
+    70%{opacity:1;transform:scale(1)}
+    100%{opacity:0;transform:scale(1.25)}
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .overlay{transition:none}
+    .go.fire{animation-duration:.01s}
+    .btn{transition:none}
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <canvas id="game" aria-label="Escape the Great White — swim away from the shark and collect the pearls"></canvas>
+
+  <div class="hud" id="hud" hidden>
+    <div class="hud__level"><span id="hudLevel">Level 1</span></div>
+    <div class="hud__pearls"><span class="dot"></span><span id="hudPearls">0/3</span></div>
+    <div class="hud__lives" id="hudLives"></div>
+  </div>
+
+  <div class="go" id="goFlash">Go!</div>
+
+  <div class="overlay show" id="ovTitle">
+    <div class="card">
+      <h1><span class="white">Escape the</span><span class="great">Great White</span></h1>
+      <button class="btn" id="btnStart">Play</button>
+      <p class="best" id="bestLine"></p>
+    </div>
+  </div>
+
+  <div class="overlay bare" id="ovLevel">
+    <div class="card">
+      <h2 id="lvTitle">Level 1</h2>
+      <p class="zone" id="lvZone">Sunlit Shallows</p>
+      <div class="depthbar"><i id="lvDepth" style="width:4%"></i></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="ovCaught">
+    <div class="card">
+      <h2>Chomp!</h2>
+      <button class="btn" id="btnRetry">Again</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="ovOver">
+    <div class="card">
+      <h2>The Great White wins</h2>
+      <p class="stat" id="overLine">Level 1</p>
+      <button class="btn" id="btnRestart">Play again</button>
+      <p class="best" id="overBest"></p>
+    </div>
+  </div>
+
+  <div class="overlay" id="ovWin">
+    <div class="card">
+      <h2>You escaped!</h2>
+      <button class="btn" id="btnPlayAgain">Play again</button>
+    </div>
+  </div>
+
+  <button class="mute" id="btnMute" aria-label="Mute sound">&#9835;</button>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =========================================================================
+   THE DIFFICULTY CURVE.
+   Every level is one row of numbers. Tune here, nowhere else.
+   speed  : shark forward speed (player tops out at 4.15)
+   turn   : how fast a shark can rotate — low turn = it overshoots and you juke it
+   sharks : how many
+   pearls : how many to collect
+   rocks  : obstacles the shark bonks into
+   kelp   : slow-zones for sharks, free passage for you
+   lunge  : shark winds up and bursts
+   lead   : frames of aim-ahead. 0 = chases where you ARE; >0 = where you're GOING
+   ========================================================================= */
+const LEVELS = [
+  { speed:1.70, turn:0.026, sharks:1, pearls:3, rocks:0, kelp:1, lunge:false, lead:0,  pup:1    },
+  { speed:1.90, turn:0.030, sharks:1, pearls:4, rocks:1, kelp:1, lunge:false, lead:0,  pup:1    },
+  { speed:2.10, turn:0.034, sharks:1, pearls:4, rocks:2, kelp:2, lunge:false, lead:0,  pup:1    },
+  { speed:2.30, turn:0.039, sharks:1, pearls:5, rocks:2, kelp:2, lunge:false, lead:0,  pup:1    },
+  { speed:2.50, turn:0.044, sharks:1, pearls:5, rocks:3, kelp:2, lunge:false, lead:0,  pup:1    },
+  { speed:2.65, turn:0.049, sharks:1, pearls:6, rocks:3, kelp:2, lunge:true,  lead:0,  pup:1    },
+  { speed:2.80, turn:0.055, sharks:1, pearls:6, rocks:4, kelp:3, lunge:true,  lead:7,  pup:1    },
+  { speed:2.95, turn:0.060, sharks:1, pearls:7, rocks:4, kelp:3, lunge:true,  lead:9,  pup:1    },
+  { speed:3.10, turn:0.066, sharks:1, pearls:7, rocks:5, kelp:3, lunge:true,  lead:11, pup:1    },
+  { speed:2.85, turn:0.058, sharks:2, pearls:8, rocks:5, kelp:4, lunge:true,  lead:8,  pup:0.72 },
+  { speed:3.05, turn:0.066, sharks:2, pearls:8, rocks:5, kelp:4, lunge:true,  lead:10, pup:0.85 },
+  { speed:3.25, turn:0.073, sharks:2, pearls:9, rocks:6, kelp:4, lunge:true,  lead:13, pup:0.95 }
+];
+const ZONES = ["Sunlit Shallows","The Kelp Forest","Twilight Zone","The Abyss"];
+const zoneFor = i => ZONES[Math.min(3, Math.floor(i/3))];
+
+const PACE = 0.9;            // global slow-motion. Same geometry, more thinking time.
+const START_LIVES = 5;
+const VW = 450, VH = 800;
+const PLAYER_SPEED = 4.15 * PACE;
+
+/* ---------- palette ---------- */
+const SHALLOW_TOP=[0x6F,0xE3,0xE0], SHALLOW_BOT=[0x0E,0x6A,0x92];
+const ABYSS_TOP  =[0x0A,0x2E,0x45], ABYSS_BOT  =[0x01,0x10,0x1C];
+const SUN='#FFE9A8', CORAL='#FF6B4A', KELP='#1F7A55', ROCK='#08222F';
+
+const lerp=(a,b,t)=>a+(b-a)*t;
+const mix=(c1,c2,t)=>'rgb('+Math.round(lerp(c1[0],c2[0],t))+','+Math.round(lerp(c1[1],c2[1],t))+','+Math.round(lerp(c1[2],c2[2],t))+')';
+const clamp=(v,lo,hi)=>v<lo?lo:v>hi?hi:v;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const dist2=(ax,ay,bx,by)=>{const dx=ax-bx,dy=ay-by;return dx*dx+dy*dy;};
+function normAngle(a){while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;}
+
+/* ---------- canvas ---------- */
+const cv=document.getElementById('game'), ctx=cv.getContext('2d');
+const stage=document.getElementById('stage');
+let scale=1;
+function resize(){
+  const dpr=Math.min(window.devicePixelRatio||1,2.5);
+  const r=cv.getBoundingClientRect();
+  cv.width=Math.max(1,Math.round(r.width*dpr));
+  cv.height=Math.max(1,Math.round(r.height*dpr));
+  scale=cv.width/VW;
+}
+window.addEventListener('resize',resize);
+window.addEventListener('orientationchange',()=>setTimeout(resize,120));
+if(window.ResizeObserver) new ResizeObserver(resize).observe(stage);
+
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- tiny sound (no assets — pure WebAudio) ---------- */
+let actx=null, muted=false;
+function audio(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx=false; } } return actx; }
+function tone(freq,dur,type,vol,slideTo){
+  if(muted) return; const a=audio(); if(!a) return;
+  const o=a.createOscillator(), g=a.createGain();
+  o.type=type||'sine'; o.frequency.setValueAtTime(freq,a.currentTime);
+  if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,a.currentTime+dur);
+  g.gain.setValueAtTime(0.0001,a.currentTime);
+  g.gain.exponentialRampToValueAtTime(vol||0.14,a.currentTime+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+dur);
+  o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+dur+0.02);
+}
+const sfx={
+  pearl:n=>tone(660+n*70,0.16,'sine',0.12,980+n*70),
+  chomp:()=>{tone(150,0.32,'sawtooth',0.16,52);tone(78,0.42,'sine',0.12,40);},
+  clear:()=>{[523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,0.2,'triangle',0.12),i*95));},
+  over :()=>{[392,330,262,196].forEach((f,i)=>setTimeout(()=>tone(f,0.34,'sine',0.14),i*170));},
+  win  :()=>{[523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>tone(f,0.3,'triangle',0.13),i*130));},
+  bonk :()=>tone(110,0.1,'square',0.07,70)
+};
+
+/* ---------- game state ---------- */
+const S={TITLE:0,INTRO:1,PLAY:2,CAUGHT:3,OVER:4,WIN:5};
+let state=S.TITLE;
+let levelIdx=0, lives=START_LIVES, best=1;
+try{ best=Math.max(1, parseInt(localStorage.getItem('egw.best')||'1',10)||1); }catch(e){}
+
+let player={x:VW/2,y:VH-110,vx:0,vy:0,r:11,tail:0,invuln:0,alive:true,facing:-Math.PI/2};
+let sharks=[], pearls=[], rocks=[], kelps=[], bubbles=[], bits=[];
+let target=null, ptr=null, freeze=0, shakeT=0, flashT=0, depth=0, tAmb=0;
+const keys=Object.create(null);
+
+/* ---------- spawning ---------- */
+function farEnough(x,y,list,min){ for(const o of list){ if(dist2(x,y,o.x,o.y)<min*min) return false; } return true; }
+function place(list,min,margin,avoid,opt){
+  const bot=(opt&&opt.bot)||margin, keep=opt&&opt.keepOut;
+  for(let i=0;i<300;i++){
+    const x=rand(margin,VW-margin), y=rand(margin+70,VH-bot);
+    if(!farEnough(x,y,list,min)) continue;
+    if(avoid && !farEnough(x,y,avoid.list,avoid.min)) continue;
+    if(keep && dist2(x,y,keep.x,keep.y)<keep.r*keep.r) continue;   // mute button sits here
+    return {x,y};
+  }
+  return {x:rand(margin,VW-margin), y:rand(margin+70,VH-bot)};
+}
+
+function buildLevel(i){
+  const L=LEVELS[i];
+  depth=i/(LEVELS.length-1);
+
+  player.x=VW/2; player.y=VH-110; player.vx=player.vy=0;
+  player.invuln=90; player.alive=true; player.facing=-Math.PI/2;
+  target=null;
+
+  rocks=[]; kelps=[]; pearls=[]; bits=[];
+
+  const spawnGuard={list:[{x:player.x,y:player.y}],min:120};
+
+  for(let n=0;n<L.rocks;n++){
+    const p=place(rocks.concat(kelps),96,54,spawnGuard);
+    const r=rand(26,40), pts=[];
+    const sides=Math.floor(rand(7,11));
+    for(let s=0;s<sides;s++){
+      const a=s/sides*Math.PI*2 + rand(-0.18,0.18);
+      const rr=r*rand(0.60,1.26);
+      pts.push([Math.cos(a)*rr,Math.sin(a)*rr]);
+    }
+    rocks.push({x:p.x,y:p.y,r:r,pts:pts});
+  }
+  for(let n=0;n<L.kelp;n++){
+    const p=place(rocks.concat(kelps),100,56,spawnGuard);
+    const r=rand(46,62), strands=[];
+    for(let s=0;s<9;s++) strands.push({ox:rand(-r*0.8,r*0.8),h:rand(r*1.2,r*2.0),ph:rand(0,6.283),w:rand(3.5,6.5)});
+    kelps.push({x:p.x,y:p.y,r:r,strands:strands});
+  }
+  for(let n=0;n<L.pearls;n++){
+    const p=place(pearls,74,42,{list:rocks,min:56},{bot:86,keepOut:{x:VW-30,y:VH-30,r:78}});
+    pearls.push({x:p.x,y:p.y,ph:rand(0,6.283),got:false});
+  }
+
+  sharks=[];
+  for(let n=0;n<L.sharks;n++){
+    const sc = n===0 ? 1 : (L.pup||1);   // the second shark is a visibly smaller pup
+    sharks.push({
+      x: n===0 ? 70 : VW-70, y: 120 + n*40,
+      a: Math.PI/2, spd:L.speed*sc*PACE, sc:sc, stun:0,
+      lungeCd: rand(120,220), lungeState:0, lungeT:0, mouth:0, wob:rand(0,6.283)
+    });
+  }
+  bubbles=[];
+  for(let n=0;n<26;n++) bubbles.push({x:rand(0,VW),y:rand(0,VH),r:rand(1.4,4.2),sp:rand(0.25,0.9),ph:rand(0,6.283)});
+}
+
+/* ---------- particles ---------- */
+function burst(x,y,color,count,spread){
+  for(let i=0;i<count;i++){
+    const a=rand(0,6.283), s=rand(0.6,spread||3.6);
+    bits.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:rand(1.6,4.4),c:color});
+  }
+}
+
+/* =========================================================================
+   UPDATE
+   ========================================================================= */
+function update(){
+  tAmb+=0.016;
+
+  for(const b of bubbles){
+    b.y-=b.sp*(reduced?0.3:1);
+    b.x+=Math.sin(tAmb*1.4+b.ph)*0.22;
+    if(b.y<-8){ b.y=VH+8; b.x=rand(0,VW); }
+  }
+  for(let i=bits.length-1;i>=0;i--){
+    const p=bits[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy-=0.035; p.vx*=0.96; p.vy*=0.96;
+    p.life-=0.024;
+    if(p.life<=0) bits.splice(i,1);
+  }
+  if(shakeT>0) shakeT--;
+  if(flashT>0) flashT--;
+
+  if(state!==S.PLAY && state!==S.TITLE) return;
+  if(freeze>0){ freeze--; }
+
+  /* ---- player ---- */
+  if(ptr) target=aimAt(ptr);        // a finger still pressed keeps steering
+  let tx=null,ty=null;
+  if(target){ tx=target.x; ty=target.y; }
+  let ax=0, ay=0;
+  if(keys.left) ax-=1; if(keys.right) ax+=1;
+  if(keys.up) ay-=1; if(keys.down) ay+=1;
+  if(ax||ay){ const m=Math.hypot(ax,ay); tx=player.x+ax/m*200; ty=player.y+ay/m*200; }
+
+  if(tx!==null){
+    const dx=tx-player.x, dy=ty-player.y, d=Math.hypot(dx,dy);
+    if(d>3){
+      const ease=clamp(d/60,0.25,1);
+      player.vx+=(dx/d*PLAYER_SPEED*ease-player.vx)*0.24;
+      player.vy+=(dy/d*PLAYER_SPEED*ease-player.vy)*0.24;
+    } else { player.vx*=0.8; player.vy*=0.8; }
+  } else { player.vx*=0.9; player.vy*=0.9; }
+
+  player.x+=player.vx; player.y+=player.vy;
+  player.x=clamp(player.x,player.r,VW-player.r);
+  player.y=clamp(player.y,player.r+8,VH-player.r);
+
+  const sp=Math.hypot(player.vx,player.vy);
+  if(sp>0.35) player.facing=Math.atan2(player.vy,player.vx);
+  player.tail+=0.18+sp*0.10;
+  if(player.invuln>0) player.invuln--;
+
+  for(const r of rocks){
+    const dx=player.x-r.x, dy=player.y-r.y, d=Math.hypot(dx,dy), min=r.r+player.r;
+    if(d<min && d>0.01){ player.x=r.x+dx/d*min; player.y=r.y+dy/d*min; player.vx*=0.5; player.vy*=0.5; }
+  }
+
+  if(state!==S.PLAY) return;   // title screen: swim around, nothing can hurt you
+
+  /* ---- pearls ---- */
+  for(const p of pearls){
+    if(p.got) continue;
+    p.ph+=0.045;
+    if(dist2(player.x,player.y,p.x,p.y) < 26*26){
+      p.got=true;
+      const n=pearls.filter(q=>q.got).length;
+      sfx.pearl(n);
+      burst(p.x,p.y,SUN,16,3.2);
+      updateHUD();
+      if(pearls.every(q=>q.got)) return levelClear();
+    }
+  }
+
+  /* ---- sharks ---- */
+  const L=LEVELS[levelIdx];
+  for(const s of sharks){
+    s.wob+=0.09;
+    if(freeze>0) continue;
+    if(s.stun>0){ s.stun--; }
+
+    // lunge state machine: 0 idle, 1 wind-up (telegraph), 2 burst
+    let spd=s.spd;
+    if(L.lunge && s.stun<=0){
+      if(s.lungeState===0){
+        s.lungeCd--;
+        if(s.lungeCd<=0 && dist2(s.x,s.y,player.x,player.y)<190*190){ s.lungeState=1; s.lungeT=28; }
+      } else if(s.lungeState===1){
+        s.lungeT--; spd*=0.18; s.mouth=lerp(s.mouth,1,0.18);
+        if(s.lungeT<=0){ s.lungeState=2; s.lungeT=30; }
+      } else {
+        s.lungeT--; spd*=2.15; s.mouth=lerp(s.mouth,0.6,0.12);
+        if(s.lungeT<=0){ s.lungeState=0; s.lungeCd=rand(150,260); }
+      }
+    }
+    if(s.lungeState===0) s.mouth=lerp(s.mouth,0,0.1);
+    if(s.stun>0) spd*=0.35;
+
+    // seaweed slows sharks — the player's safe haven
+    for(const k of kelps){ if(dist2(s.x,s.y,k.x,k.y)<k.r*k.r){ spd*=0.5; break; } }
+
+    // steering: aim where you ARE, or (level 7+) where you're GOING
+    let tX=player.x + player.vx*(L.lead/PACE);
+    let tY=player.y + player.vy*(L.lead/PACE);
+    tX=clamp(tX,0,VW); tY=clamp(tY,0,VH);
+    const want=Math.atan2(tY-s.y, tX-s.x);
+    const near=Math.hypot(player.x-s.x, player.y-s.y);
+    // Once it's this close the shark has committed: it can barely steer, so a
+    // last-moment dodge always beats it. Every death is "too slow", never "unfair".
+    const turn = (near<58 ? L.turn*0.10
+               : s.lungeState===1 ? L.turn*0.35
+               : L.turn) * PACE;
+    s.a += clamp(normAngle(want-s.a), -turn, turn);
+
+    s.x+=Math.cos(s.a)*spd;
+    s.y+=Math.sin(s.a)*spd;
+
+    // walls
+    if(s.x<24){ s.x=24; s.a=normAngle(Math.PI-s.a); }
+    if(s.x>VW-24){ s.x=VW-24; s.a=normAngle(Math.PI-s.a); }
+    if(s.y<24){ s.y=24; s.a=normAngle(-s.a); }
+    if(s.y>VH-24){ s.y=VH-24; s.a=normAngle(-s.a); }
+
+    // rocks bonk the shark — lead it in and buy yourself time
+    for(const r of rocks){
+      const dx=s.x-r.x, dy=s.y-r.y, d=Math.hypot(dx,dy), min=r.r+22*(s.sc||1);
+      if(d<min && d>0.01){
+        s.x=r.x+dx/d*min; s.y=r.y+dy/d*min;
+        s.a=Math.atan2(dy,dx)+rand(-0.5,0.5);
+        if(s.stun<=0){ sfx.bonk(); burst(s.x,s.y,'#9FD3E0',8,2.2); }
+        s.stun=42; s.lungeState=0; s.lungeCd=rand(140,240);
+      }
+    }
+
+    // BITE: only the front of the shark hurts. Brushing the tail is free.
+    if(player.invuln<=0 && player.alive){
+      const sc=s.sc||1;
+      const noseX=s.x+Math.cos(s.a)*34*sc, noseY=s.y+Math.sin(s.a)*34*sc;
+      const jawX =s.x+Math.cos(s.a)*16*sc, jawY =s.y+Math.sin(s.a)*16*sc;
+      if(dist2(player.x,player.y,noseX,noseY) < (24*sc)*(24*sc) ||
+         dist2(player.x,player.y,jawX,jawY)  < (25*sc)*(25*sc)){
+        return caught();
+      }
+    }
+  }
+}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+function bg(){
+  const top=mix(SHALLOW_TOP,ABYSS_TOP,depth), bot=mix(SHALLOW_BOT,ABYSS_BOT,depth);
+  const g=ctx.createLinearGradient(0,0,0,VH);
+  g.addColorStop(0,top); g.addColorStop(1,bot);
+  ctx.fillStyle=g; ctx.fillRect(0,0,VW,VH);
+
+  // god-rays: strong in the shallows, gone in the abyss
+  const rayA=(1-depth)*0.5;
+  if(rayA>0.01){
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    for(let i=0;i<5;i++){
+      const base=(i*103)%VW, sway=Math.sin(tAmb*0.35+i)*26;
+      const rg=ctx.createLinearGradient(0,0,0,VH*0.85);
+      rg.addColorStop(0,'rgba(255,245,205,'+(rayA*0.4)+')');
+      rg.addColorStop(1,'rgba(255,245,205,0)');
+      ctx.fillStyle=rg;
+      ctx.beginPath();
+      ctx.moveTo(base-16+sway,-10); ctx.lineTo(base+26+sway,-10);
+      ctx.lineTo(base+104+sway*2.2,VH*0.85); ctx.lineTo(base-58+sway*2.2,VH*0.85);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // marine snow drifts in as it gets deep
+  if(depth>0.12){
+    ctx.fillStyle='rgba(220,240,245,'+(depth*0.30)+')';
+    for(let i=0;i<46;i++){
+      const x=(i*97.3)%VW, y=((i*53.7)+tAmb*11*(0.4+(i%5)*0.16))%VH;
+      ctx.fillRect(x,y,1.5,1.5);
+    }
+  }
+}
+
+function drawBubbles(){
+  ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=1;
+  for(const b of bubbles){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,6.283); ctx.stroke(); }
+}
+
+function drawRock(rock){
+  const R=rock.r;
+  ctx.save(); ctx.translate(rock.x,rock.y);
+  ctx.beginPath(); ctx.moveTo(rock.pts[0][0],rock.pts[0][1]);
+  for(let i=1;i<rock.pts.length;i++) ctx.lineTo(rock.pts[i][0],rock.pts[i][1]);
+  ctx.closePath();
+  // rock catches the light in the shallows and turns to silhouette in the abyss
+  const rg=ctx.createLinearGradient(0,-R,0,R);
+  rg.addColorStop(0,   mix([0x73,0x94,0xA4],[0x1B,0x3D,0x52],depth));
+  rg.addColorStop(0.55,mix([0x3E,0x62,0x78],[0x08,0x22,0x2F],depth));
+  rg.addColorStop(1,   mix([0x22,0x45,0x59],[0x04,0x14,0x1E],depth));
+  ctx.fillStyle=rg; ctx.fill();
+  ctx.strokeStyle='rgba(160,215,230,'+(0.20+depth*0.26)+')'; ctx.lineWidth=1.6; ctx.stroke();
+  ctx.save(); ctx.clip();                      // a rim of light along the top edge
+  ctx.strokeStyle='rgba(190,235,245,'+(0.22+depth*0.20)+')'; ctx.lineWidth=3.5;
+  ctx.beginPath(); ctx.ellipse(0,R*0.30,R*1.06,R*0.96,0,Math.PI*1.08,Math.PI*1.92); ctx.stroke();
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawKelp(k){
+  ctx.save(); ctx.translate(k.x,k.y);
+  ctx.strokeStyle='rgba(31,122,85,'+(0.30+depth*0.12)+')';
+  ctx.fillStyle='rgba(31,122,85,.13)';
+  ctx.beginPath(); ctx.arc(0,0,k.r,0,6.283); ctx.fill();
+  ctx.lineCap='round';
+  for(const st of k.strands){
+    const sway=Math.sin(tAmb*(reduced?0.2:1.1)+st.ph)*9;
+    ctx.lineWidth=st.w;
+    ctx.strokeStyle='rgba(31,122,85,'+(0.55+depth*0.2)+')';
+    ctx.beginPath();
+    ctx.moveTo(st.ox,k.r*0.7);
+    ctx.quadraticCurveTo(st.ox+sway, k.r*0.7-st.h*0.55, st.ox+sway*1.7, k.r*0.7-st.h);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPearl(p){
+  const bob=Math.sin(p.ph)*3;
+  const glow=9+depth*10+Math.sin(p.ph*1.6)*2;
+  ctx.save(); ctx.translate(p.x,p.y+bob);
+  const g=ctx.createRadialGradient(0,0,1,0,0,glow+11);
+  g.addColorStop(0,'rgba(255,233,168,.85)');
+  g.addColorStop(1,'rgba(255,233,168,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,glow+11,0,6.283); ctx.fill();
+  ctx.fillStyle=SUN; ctx.beginPath(); ctx.arc(0,0,7,0,6.283); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.9)'; ctx.beginPath(); ctx.arc(-2.2,-2.2,2.3,0,6.283); ctx.fill();
+  ctx.restore();
+}
+
+function drawSwimmer(){
+  if(!player.alive) return;
+  if(player.invuln>0){
+    ctx.save(); ctx.translate(player.x,player.y);
+    const pulse=1+Math.sin(tAmb*9)*0.06;
+    const g=ctx.createRadialGradient(0,0,10,0,0,26*pulse);
+    g.addColorStop(0,'rgba(180,240,255,0)');
+    g.addColorStop(0.72,'rgba(180,240,255,.12)');
+    g.addColorStop(1,'rgba(220,250,255,.46)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,26*pulse,0,6.283); ctx.fill();
+    ctx.strokeStyle='rgba(235,252,255,.7)'; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(0,0,26*pulse,0,6.283); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.save(); ctx.translate(player.x,player.y); ctx.rotate(player.facing);
+  ctx.scale(1.16,1.16);
+  ctx.shadowColor='rgba(3,24,38,.85)'; ctx.shadowBlur=3.5;   // rim: separates him from the water
+
+  const SKIN='#FBD3A8', SKIN_D='#D79A6C', SUIT='#133F63', CAP=CORAL;
+  const kick  =Math.sin(player.tail*1.7);      // flutter kick
+  const stroke=Math.sin(player.tail*0.85);     // front-crawl arm
+
+  ctx.lineCap='round'; ctx.lineJoin='round';
+
+  // --- trailing leg (far side, drawn darker so the two read apart) ---
+  ctx.strokeStyle=SKIN_D; ctx.lineWidth=4.6;
+  ctx.beginPath(); ctx.moveTo(-3,1);
+  ctx.quadraticCurveTo(-12,3-kick*5, -21,2-kick*9); ctx.stroke();
+
+  // --- near leg ---
+  ctx.strokeStyle=SKIN; ctx.lineWidth=5;
+  ctx.beginPath(); ctx.moveTo(-3,-1);
+  ctx.quadraticCurveTo(-12,-3+kick*5, -21,-2+kick*9); ctx.stroke();
+
+  // --- recovering arm, sweeping over the head ---
+  const ang=-1.15+stroke*1.15;
+  ctx.strokeStyle=SKIN_D; ctx.lineWidth=4.2;
+  ctx.beginPath(); ctx.moveTo(8,-2);
+  ctx.quadraticCurveTo(10+Math.cos(ang)*8, -3+Math.sin(ang)*9,
+                       10+Math.cos(ang)*15, -2+Math.sin(ang)*15);
+  ctx.stroke();
+
+  // --- torso: dark suit over the hips and back, bare shoulders ---
+  ctx.fillStyle=SUIT;
+  ctx.beginPath(); ctx.ellipse(-1.5,0,10,5.7,0,0,6.283); ctx.fill();
+  ctx.fillStyle=SKIN;
+  ctx.beginPath(); ctx.ellipse(8.6,-1.4,7.2,4.9,0,0,6.283); ctx.fill();
+
+  // --- pulling arm, reaching forward ---
+  ctx.strokeStyle=SKIN; ctx.lineWidth=4.4;
+  ctx.beginPath(); ctx.moveTo(9,1);
+  ctx.quadraticCurveTo(17,4+stroke*2, 24,1+stroke*3); ctx.stroke();
+
+  // --- head, cap and goggles ---
+  ctx.fillStyle=SKIN_D;                               // neck shadow separates head from torso
+  ctx.beginPath(); ctx.ellipse(12.6,-2.4,1.9,3.2,0,0,6.283); ctx.fill();
+  ctx.fillStyle=SKIN;
+  ctx.beginPath(); ctx.arc(15.6,-3,5.6,0,6.283); ctx.fill();
+  ctx.fillStyle=CAP;                                  // bright cap = easy to spot
+  ctx.beginPath(); ctx.arc(15.6,-3,5.8,Math.PI*1.02,Math.PI*2.13); ctx.fill();
+  ctx.fillStyle='#14303F';
+  ctx.beginPath(); ctx.ellipse(18.6,-2.6,2.3,1.8,0,0,6.283); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.8)';
+  ctx.beginPath(); ctx.arc(19.3,-3.3,0.8,0,6.283); ctx.fill();
+
+  ctx.restore();
+}
+
+function drawShark(s){
+  ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.a);
+  if(s.sc && s.sc!==1) ctx.scale(s.sc,s.sc);
+  const wag=Math.sin(s.wob)*(s.stun>0?0.25:1);
+
+  // wind-up telegraph: a warm halo means a lunge is coming
+  if(s.lungeState===1){
+    ctx.save();
+    ctx.globalAlpha=0.45+Math.sin(tAmb*22)*0.22;
+    ctx.strokeStyle=CORAL; ctx.lineWidth=4;
+    ctx.beginPath(); ctx.ellipse(0,0,50,26,0,0,6.283); ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.fillStyle='rgba(0,0,0,.16)';
+  ctx.beginPath(); ctx.ellipse(-4,8,42,13,0,0,6.283); ctx.fill();
+
+  ctx.fillStyle='#3A5870';
+  // crescent tail: long upper lobe, short lower lobe
+  ctx.beginPath();
+  ctx.moveTo(-28,0);
+  ctx.quadraticCurveTo(-42,-10, -56,-27+wag*9);
+  ctx.quadraticCurveTo(-46,-8, -44,-1);
+  ctx.quadraticCurveTo(-46,7, -50,17+wag*9);
+  ctx.quadraticCurveTo(-40,8, -28,4);
+  ctx.closePath(); ctx.fill();
+
+  // dorsal fin: swept back, half the old size
+  ctx.beginPath();
+  ctx.moveTo(2,-12); ctx.quadraticCurveTo(-3,-30,-17,-11);
+  ctx.closePath(); ctx.fill();
+  // pectoral fin
+  ctx.beginPath();
+  ctx.moveTo(12,7); ctx.quadraticCurveTo(4,26,-8,10);
+  ctx.closePath(); ctx.fill();
+
+  // body: pointed snout, thick shoulders, narrow tailstock
+  const g=ctx.createLinearGradient(0,-17,0,16);
+  g.addColorStop(0,'#2E4D66'); g.addColorStop(0.5,'#5C7E94');
+  g.addColorStop(0.74,'#DCE8EE'); g.addColorStop(1,'#FFFFFF');
+  ctx.fillStyle=g;
+  ctx.beginPath();
+  ctx.moveTo(46,-1);
+  ctx.bezierCurveTo(38,-13, 18,-17, -6,-14);
+  ctx.bezierCurveTo(-20,-12, -26,-8, -30,-4);
+  ctx.lineTo(-30,5);
+  ctx.bezierCurveTo(-22,11, -6,16, 14,14);
+  ctx.bezierCurveTo(30,12, 41,7, 46,-1);
+  ctx.closePath(); ctx.fill();
+
+  // jaw — opens on the wind-up
+  const open=s.mouth*7;
+  ctx.fillStyle='#2A1216';
+  ctx.beginPath();
+  ctx.moveTo(44,1); ctx.quadraticCurveTo(32,9+open, 15,8+open*0.6);
+  ctx.quadraticCurveTo(29,5, 44,1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#FFFFFF';
+  for(let i=0;i<5;i++){
+    const tx=38-i*5.5;
+    ctx.beginPath(); ctx.moveTo(tx,2.6+open*0.5); ctx.lineTo(tx-2.4,6.2+open*0.72); ctx.lineTo(tx+1.5,6.2+open*0.72); ctx.closePath(); ctx.fill();
+  }
+  // gills
+  ctx.strokeStyle='rgba(20,44,60,.5)'; ctx.lineWidth=1.4;
+  for(let i=0;i<4;i++){ ctx.beginPath(); ctx.moveTo(14-i*5,-9); ctx.lineTo(12-i*5,-1); ctx.stroke(); }
+  // eye
+  ctx.fillStyle='#0B1A22'; ctx.beginPath(); ctx.arc(30,-6,3.1,0,6.283); ctx.fill();
+  ctx.restore();
+}
+
+function render(){
+  ctx.setTransform(scale,0,0,scale,0,0);
+  if(shakeT>0 && !reduced){
+    const m=shakeT/14;
+    ctx.translate(rand(-7,7)*m, rand(-7,7)*m);
+  }
+  bg();
+  for(const k of kelps) drawKelp(k);
+  for(const r of rocks) drawRock(r);
+  for(const p of pearls) if(!p.got) drawPearl(p);
+  drawBubbles();
+  for(const p of bits){
+    ctx.globalAlpha=Math.max(0,p.life);
+    ctx.fillStyle=p.c; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.283); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  for(const s of sharks) drawShark(s);
+  drawSwimmer();
+
+  // vignette deepens with the water
+  const v=ctx.createRadialGradient(VW/2,VH/2,VH*0.3,VW/2,VH/2,VH*0.78);
+  v.addColorStop(0,'rgba(0,0,0,0)');
+  v.addColorStop(1,'rgba(1,12,22,'+(0.30+depth*0.42)+')');
+  ctx.fillStyle=v; ctx.fillRect(0,0,VW,VH);
+
+  if(flashT>0){ ctx.fillStyle='rgba(255,107,74,'+(flashT/18*0.4)+')'; ctx.fillRect(0,0,VW,VH); }
+}
+
+/* ---------- loop ---------- */
+let last=performance.now(), acc=0;
+function frame(now){
+  requestAnimationFrame(frame);        // queue first: a thrown frame can't stop the game
+  let dt=now-last; last=now;
+  if(dt>90) dt=90;
+  acc+=dt;
+  try{
+    while(acc>=16.6667){ update(); acc-=16.6667; }
+    render();
+  }catch(err){
+    acc=0;
+    if(!frame.warned){ frame.warned=1; try{console.error('frame error:',err);}catch(e){} }
+  }
+}
+
+/* =========================================================================
+   FLOW
+   ========================================================================= */
+const el=id=>document.getElementById(id);
+const ovTitle=el('ovTitle'), ovLevel=el('ovLevel'), ovCaught=el('ovCaught'),
+      ovOver=el('ovOver'), ovWin=el('ovWin'), hud=el('hud'), goFlash=el('goFlash');
+function show(o){ o.classList.add('show'); }
+function hide(o){ o.classList.remove('show'); }
+function hideAll(){ [ovTitle,ovLevel,ovCaught,ovOver,ovWin].forEach(hide); }
+
+const HEART='<svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.2C5.5 15.6 2.4 12 2.4 8.2A5 5 0 0 1 12 5.6a5 5 0 0 1 9.6 2.6c0 3.8-3.1 7.4-9.6 13z"/></svg>';
+function updateHUD(){
+  el('hudLevel').textContent='Level '+(levelIdx+1);
+  el('hudPearls').textContent=pearls.filter(p=>p.got).length+'/'+pearls.length;
+  let h='';
+  for(let i=0;i<START_LIVES;i++) h+=HEART.replace('class="heart"', i<lives?'class="heart"':'class="heart spent"');
+  el('hudLives').innerHTML=h;
+}
+
+function startLevel(i){
+  levelIdx=i;
+  buildLevel(i);
+  state=S.INTRO;
+  hud.hidden=false; updateHUD();
+  hideAll();
+  el('lvZone').textContent=zoneFor(i);
+  el('lvTitle').textContent='Level '+(i+1);
+  el('lvDepth').style.width=(4+ (i/(LEVELS.length-1))*96)+'%';
+  show(ovLevel);
+  setTimeout(()=>{
+    hide(ovLevel);
+    state=S.PLAY;
+    freeze=45;
+    goFlash.classList.remove('fire'); void goFlash.offsetWidth; goFlash.classList.add('fire');
+  }, 1500);
+}
+
+function levelClear(){
+  state=S.INTRO;
+  sfx.clear();
+  burst(player.x,player.y,SUN,26,4.5);
+  if(levelIdx+1>=LEVELS.length){
+    try{ localStorage.setItem('egw.best',String(LEVELS.length)); }catch(e){}
+    best=LEVELS.length;
+    setTimeout(()=>{ state=S.WIN; hud.hidden=true; hideAll(); show(ovWin); sfx.win(); }, 700);
+    return;
+  }
+  const next=levelIdx+1;
+  if(next+1>best){ best=next+1; try{ localStorage.setItem('egw.best',String(best)); }catch(e){} }
+  setTimeout(()=>startLevel(next), 850);
+}
+
+function caught(){
+  player.alive=false;
+  lives--;
+  sfx.chomp();
+  burst(player.x,player.y,CORAL,22,4.2);
+  burst(player.x,player.y,'#DCF0F5',14,3.0);
+  shakeT=14; flashT=18;
+  state=S.CAUGHT;
+  updateHUD();
+  setTimeout(()=>{
+    if(lives<=0){
+      state=S.OVER; hud.hidden=true; hideAll();
+      el('overLine').textContent='Level '+(levelIdx+1);
+      el('overBest').textContent = best>levelIdx+1 ? 'Best · Level '+best : '';
+      show(ovOver); sfx.over();
+    } else {
+      hideAll(); show(ovCaught);
+    }
+  }, 780);
+}
+
+function newGame(){
+  lives=START_LIVES;
+  startLevel(0);
+}
+
+/* ---------- input ---------- */
+function toArena(e){
+  const r=cv.getBoundingClientRect();
+  return { x:(e.clientX-r.left)/r.width*VW, y:(e.clientY-r.top)/r.height*VH, touch:e.pointerType==='touch' };
+}
+function aimAt(q){
+  let y=q.y;
+  if(q.touch){
+    // Lift the swimmer above the fingertip so a small thumb never covers it —
+    // but ease that offset back to zero near the bottom edge, or the lowest
+    // strip of the arena (and any pearl in it) becomes impossible to reach.
+    y -= 62 * clamp((VH-q.y)/130, 0, 1);
+  }
+  return {x:clamp(q.x,0,VW), y:clamp(y,0,VH)};
+}
+function liftPointer(){ ptr=null; target=null; }
+cv.addEventListener('pointerdown',e=>{ audio(); cv.setPointerCapture(e.pointerId); ptr=toArena(e); e.preventDefault(); });
+cv.addEventListener('pointermove',e=>{ if(e.buttons||e.pointerType==='touch') ptr=toArena(e); });
+cv.addEventListener('pointerup',liftPointer);
+cv.addEventListener('pointercancel',liftPointer);
+
+const KEYMAP={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',a:'left',d:'right',w:'up',s:'down'};
+window.addEventListener('keydown',e=>{
+  const k=KEYMAP[e.key]||KEYMAP[e.key.toLowerCase()];
+  if(k){ keys[k]=true; ptr=null; target=null; audio(); e.preventDefault(); }
+});
+window.addEventListener('keyup',e=>{
+  const k=KEYMAP[e.key]||KEYMAP[e.key.toLowerCase()];
+  if(k) keys[k]=false;
+});
+
+el('btnStart').addEventListener('click',()=>{ audio(); newGame(); });
+el('btnRetry').addEventListener('click',()=>{ hideAll(); startLevel(levelIdx); });
+el('btnRestart').addEventListener('click',()=>{ hideAll(); newGame(); });
+el('btnPlayAgain').addEventListener('click',()=>{ hideAll(); newGame(); });
+
+const btnMute=el('btnMute');
+btnMute.addEventListener('click',()=>{
+  muted=!muted;
+  btnMute.innerHTML = muted ? '&#128263;' : '&#9835;';
+  btnMute.setAttribute('aria-label', muted?'Unmute sound':'Mute sound');
+});
+
+/* ---------- attract mode ---------- */
+function attract(){
+  depth=0.12;
+  rocks=[]; kelps=[]; pearls=[]; bits=[];
+  // no words explain the controls — the swimmer just follows your finger here,
+  // with the shark cruising past harmlessly, before you ever press Play
+  player.alive=true; player.invuln=0;
+  player.x=VW*0.5; player.y=VH*0.84; player.vx=player.vy=0; player.facing=-Math.PI/2;
+  sharks=[{x:118,y:VH*0.62,a:0,spd:1.5,stun:0,lungeCd:9e9,lungeState:0,lungeT:0,mouth:0,wob:0}];
+  bubbles=[];
+  for(let n=0;n<26;n++) bubbles.push({x:rand(0,VW),y:rand(0,VH),r:rand(1.4,4.2),sp:rand(0.25,0.9),ph:rand(0,6.283)});
+  (function cruise(){
+    if(state!==S.TITLE) return;
+    const s=sharks[0];
+    if(s){
+      s.x+=1.35*PACE; s.y=VH*0.62+Math.sin(s.x*0.012)*54;
+      s.a=Math.sin(s.x*0.012+1.57)*0.30; s.wob+=0.09;
+      if(s.x>VW+110){ s.x=-110; }
+    }
+    requestAnimationFrame(cruise);
+  })();
+}
+
+el('bestLine').textContent = best>1 ? 'Best · Level '+best : '';
+resize();
+attract();
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
