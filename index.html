@@ -28,7 +28,8 @@
     --body:"Nunito","Segoe UI",system-ui,sans-serif;
   }
   *{box-sizing:border-box}
-  html,body{width:100%;max-width:100%;overflow:hidden}
+  /* no pull-to-refresh, no browser swipe-navigation: a stray drag must never leave the game */
+  html,body{width:100%;max-width:100%;overflow:hidden;overscroll-behavior:none;touch-action:none}
   body{
     margin:0;
     background:var(--abyss);
@@ -91,6 +92,8 @@
     display:grid;place-items:center;backdrop-filter:blur(3px);
   }
   .mute:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+  .pause{right:auto;left:clamp(10px,3vw,16px);font-size:clamp(12px,3.4vw,15px);letter-spacing:-.05em;font-weight:700}
+  .pause[hidden]{display:none}
 
   /* ---------- Overlay cards ---------- */
   .overlay{
@@ -167,6 +170,38 @@
     opacity:0;pointer-events:none;
   }
   .go.fire{animation:goflash .75s ease-out}
+  .go.starburst{font-size:clamp(44px,13vw,66px);letter-spacing:.12em}
+  .go.starburst.fire{animation-duration:1.2s}
+  .go .off{color:rgba(234,247,247,.18);text-shadow:none}
+
+  /* ---------- level select ---------- */
+  .card.wide{max-width:none;width:100%}
+  .grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(7px,2.2vw,11px);
+    width:100%;pointer-events:auto;
+  }
+  .lvl{
+    cursor:pointer;border:none;border-radius:14px;padding:9px 2px 7px;
+    background:rgba(234,247,247,.09);box-shadow:inset 0 0 0 1.5px rgba(234,247,247,.18);
+    color:var(--foam);font-family:var(--display);
+    display:flex;flex-direction:column;align-items:center;gap:2px;min-height:clamp(58px,15vw,72px);
+    justify-content:center;
+  }
+  .lvl b{font-size:clamp(20px,6vw,27px);line-height:1;font-weight:600}
+  .lvl i{font-style:normal;font-size:clamp(12px,3.4vw,15px);line-height:1}
+  .lvl .st{font-size:clamp(10px,2.9vw,13px);letter-spacing:1px;color:rgba(234,247,247,.22);line-height:1}
+  .lvl .st em{font-style:normal;color:var(--sun)}
+  .lvl.deep{background:rgba(255,107,74,.10)}
+  .lvl.next{box-shadow:inset 0 0 0 2px var(--coral),0 0 18px rgba(255,107,74,.4)}
+  .lvl[disabled]{cursor:default;opacity:.32}
+  .lvl:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .btn.ghost{
+    background:rgba(234,247,247,.12);color:var(--foam);
+    box-shadow:0 0 0 1.5px rgba(234,247,247,.32);
+  }
+  .btn.ghost:active{box-shadow:0 0 0 1.5px rgba(234,247,247,.32)}
+  .bigstars{font-family:var(--display);font-size:clamp(30px,9vw,44px);letter-spacing:.14em;color:var(--sun);margin:0;line-height:1}
   @keyframes goflash{
     0%{opacity:0;transform:scale(.6)}
     25%{opacity:1;transform:scale(1.04)}
@@ -192,12 +227,21 @@
   </div>
 
   <div class="go" id="goFlash">Go!</div>
+  <div class="go starburst" id="starFlash"></div>
 
   <div class="overlay show" id="ovTitle">
     <div class="card">
       <h1><span class="white">Escape the</span><span class="great">Great White</span></h1>
       <button class="btn" id="btnStart">Play</button>
       <p class="best" id="bestLine"></p>
+    </div>
+  </div>
+
+  <div class="overlay" id="ovSelect">
+    <div class="card wide">
+      <h2>Levels</h2>
+      <div class="grid" id="grid"></div>
+      <button class="btn ghost" id="btnSelBack">Back</button>
     </div>
   </div>
 
@@ -216,22 +260,30 @@
     </div>
   </div>
 
+  <div class="overlay" id="ovPause">
+    <div class="card">
+      <h2>Paused</h2>
+      <div class="row"><button class="btn" id="btnResume">Swim on</button><button class="btn ghost" id="btnPauseLevels">Levels</button></div>
+    </div>
+  </div>
+
   <div class="overlay" id="ovOver">
     <div class="card">
       <h2>The Great White wins</h2>
       <p class="stat" id="overLine">Level 1</p>
-      <button class="btn" id="btnRestart">Play again</button>
-      <p class="best" id="overBest"></p>
+      <div class="row"><button class="btn" id="btnRestart">Try again</button><button class="btn ghost" id="btnOverLevels">Levels</button></div>
     </div>
   </div>
 
   <div class="overlay" id="ovWin">
     <div class="card">
       <h2>You escaped!</h2>
-      <button class="btn" id="btnPlayAgain">Play again</button>
+      <p class="bigstars" id="winStars"></p>
+      <button class="btn" id="btnPlayAgain">Levels</button>
     </div>
   </div>
 
+  <button class="mute pause" id="btnPause" aria-label="Pause" hidden>&#10074;&#10074;</button>
   <button class="mute" id="btnMute" aria-label="Mute sound">&#9835;</button>
 </div>
 
@@ -250,6 +302,17 @@
    kelp   : slow-zones for sharks, free passage for you
    lunge  : shark winds up and bursts
    lead   : frames of aim-ahead. 0 = chases where you ARE; >0 = where you're GOING
+
+   Levels 13-20 each add one twist (shark numbers stay near level 10-12,
+   the twist is the new difficulty):
+   jelly  : drifting jellyfish — a sting slows you down for a moment
+   current: sideways ocean streams that push you AND the sharks
+   hammer : a hammerhead that dashes straight across a row, after a warning
+   clams  : pearls sit in clams that open and shut — wait for them
+   dark   : lights out; you only see as far as this radius around you
+   whirl  : a whirlpool that drags everything round its middle
+   mega   : the first shark is a Megalodon
+   shield : bubble pickups — each one blocks one bite
    ========================================================================= */
 const LEVELS = [
   { speed:1.70, turn:0.026, sharks:1, pearls:3, rocks:0, kelp:1, lunge:false, lead:0,  pup:1    },
@@ -263,13 +326,27 @@ const LEVELS = [
   { speed:3.10, turn:0.066, sharks:1, pearls:7, rocks:5, kelp:3, lunge:true,  lead:11, pup:1    },
   { speed:2.85, turn:0.058, sharks:2, pearls:8, rocks:5, kelp:4, lunge:true,  lead:8,  pup:0.72 },
   { speed:3.05, turn:0.066, sharks:2, pearls:8, rocks:5, kelp:4, lunge:true,  lead:10, pup:0.85 },
-  { speed:3.25, turn:0.073, sharks:2, pearls:9, rocks:6, kelp:4, lunge:true,  lead:13, pup:0.95 }
+  { speed:3.25, turn:0.073, sharks:2, pearls:9, rocks:6, kelp:4, lunge:true,  lead:13, pup:0.95 },
+  // ---- beyond the abyss: one new twist per level ----
+  { name:"Jellyfish Bloom",  icon:"\u{1FABC}", speed:3.00, turn:0.064, sharks:1, pearls:7, rocks:3, kelp:3, lunge:true, lead:10, pup:1,   jelly:5 },
+  { name:"Riptide",          icon:"\u{1F30A}", speed:3.05, turn:0.066, sharks:1, pearls:8, rocks:3, kelp:3, lunge:true, lead:10, pup:1,   current:1.15 },
+  { name:"Hammerhead Alley", icon:"\u{1F528}", speed:3.00, turn:0.064, sharks:1, pearls:8, rocks:4, kelp:3, lunge:true, lead:10, pup:1,   hammer:1, shield:1 },
+  { name:"Clam Beds",        icon:"\u{1F41A}", speed:3.10, turn:0.068, sharks:1, pearls:8, rocks:4, kelp:3, lunge:true, lead:11, pup:1,   clams:true, jelly:2 },
+  { name:"Lights Out",       icon:"\u{1F526}", speed:3.00, turn:0.064, sharks:1, pearls:8, rocks:4, kelp:3, lunge:true, lead:10, pup:1,   dark:155 },
+  { name:"The Whirlpool",    icon:"\u{1F300}", speed:2.90, turn:0.062, sharks:2, pearls:9, rocks:3, kelp:3, lunge:true, lead:9,  pup:0.8, whirl:1, shield:1 },
+  { name:"Shark Pack",       icon:"\u{1F988}", speed:2.90, turn:0.062, sharks:3, pearls:9, rocks:4, kelp:4, lunge:true, lead:9,  pup:0.75, shield:1 },
+  { name:"Megalodon",        icon:"\u{1F451}", speed:2.80, turn:0.058, sharks:2, pearls:10, rocks:5, kelp:4, lunge:true, lead:11, pup:0.8, mega:true, jelly:3, shield:1 }
 ];
 const ZONES = ["Sunlit Shallows","The Kelp Forest","Twilight Zone","The Abyss"];
-const zoneFor = i => ZONES[Math.min(3, Math.floor(i/3))];
+const zoneFor = i => LEVELS[i].name || ZONES[Math.min(3, Math.floor(i/3))];
+const NL = LEVELS.length;
 
 const PACE = 0.9;            // global slow-motion. Same geometry, more thinking time.
-const START_LIVES = 5;
+const START_LIVES = 3;       // hearts per level; the hearts left when you clear it = your stars
+const MEGA = 1.8;            // Megalodon size
+// Touch reach: the swimmer reaches the arena wall while your finger is still this
+// far in from the screen edge. Edge swipes are the phone's "back" gesture.
+const EDGE = 50;
 const VW = 450, VH = 800;
 const PLAYER_SPEED = 4.15 * PACE;
 
@@ -321,17 +398,39 @@ const sfx={
   clear:()=>{[523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,0.2,'triangle',0.12),i*95));},
   over :()=>{[392,330,262,196].forEach((f,i)=>setTimeout(()=>tone(f,0.34,'sine',0.14),i*170));},
   win  :()=>{[523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>tone(f,0.3,'triangle',0.13),i*130));},
-  bonk :()=>tone(110,0.1,'square',0.07,70)
+  bonk :()=>tone(110,0.1,'square',0.07,70),
+  sting:()=>{tone(1250,0.09,'square',0.05,420);setTimeout(()=>tone(900,0.08,'square',0.04,300),70);},
+  warn :()=>tone(196,0.22,'sawtooth',0.05,262),
+  whoosh:()=>tone(520,0.35,'sawtooth',0.05,90),
+  shield:()=>{tone(520,0.12,'triangle',0.1,880);setTimeout(()=>tone(880,0.16,'triangle',0.1,1320),90);},
+  pop  :()=>tone(700,0.18,'sine',0.14,140),
+  star :n=>tone(784+n*130,0.18,'triangle',0.11)
 };
 
 /* ---------- game state ---------- */
-const S={TITLE:0,INTRO:1,PLAY:2,CAUGHT:3,OVER:4,WIN:5};
+const S={TITLE:0,INTRO:1,PLAY:2,CAUGHT:3,OVER:4,WIN:5,SELECT:6,PAUSE:7};
 let state=S.TITLE;
-let levelIdx=0, lives=START_LIVES, best=1;
-try{ best=Math.max(1, parseInt(localStorage.getItem('egw.best')||'1',10)||1); }catch(e){}
+let levelIdx=0, lives=START_LIVES, flowT=0;
 
-let player={x:VW/2,y:VH-110,vx:0,vy:0,r:11,tail:0,invuln:0,alive:true,facing:-Math.PI/2};
+// progress: which levels are open + best stars per level. Survives closing the tab.
+let save={unlocked:1, stars:Array(NL).fill(0)};
+try{
+  const s=JSON.parse(localStorage.getItem('egw.save')||'null');
+  if(s && Array.isArray(s.stars)){ save.unlocked=s.unlocked|0||1; s.stars.forEach((v,i)=>{ if(i<NL) save.stars[i]=v|0; }); }
+  // carry over the old single "best level" score
+  const old=parseInt(localStorage.getItem('egw.best')||'1',10)||1;
+  save.unlocked=clamp(Math.max(save.unlocked,old),1,NL);
+}catch(e){}
+function persist(){ try{ localStorage.setItem('egw.save',JSON.stringify(save)); }catch(e){} }
+// ?all opens every level for this visit only (handy for trying the new ones)
+let openAll=false;
+try{ openAll=/[?&]all\b/.test(location.search); }catch(e){}
+const isOpen=i=>openAll || i<save.unlocked;
+const totalStars=()=>save.stars.reduce((a,b)=>a+b,0);
+
+let player={x:VW/2,y:VH-110,vx:0,vy:0,r:11,tail:0,invuln:0,alive:true,facing:-Math.PI/2,sting:0,shield:false};
 let sharks=[], pearls=[], rocks=[], kelps=[], bubbles=[], bits=[];
+let jellies=[], bands=[], whirl=null, hammer=null, shields=[], cur={};
 let target=null, ptr=null, freeze=0, shakeT=0, flashT=0, depth=0, tAmb=0;
 const keys=Object.create(null);
 
@@ -351,15 +450,30 @@ function place(list,min,margin,avoid,opt){
 
 function buildLevel(i){
   const L=LEVELS[i];
-  depth=i/(LEVELS.length-1);
+  cur=L;
+  depth=Math.min(1, i/11);
 
   player.x=VW/2; player.y=VH-110; player.vx=player.vy=0;
   player.invuln=90; player.alive=true; player.facing=-Math.PI/2;
+  player.sting=0; player.shield=false;
   target=null;
 
   rocks=[]; kelps=[]; pearls=[]; bits=[];
+  jellies=[]; bands=[]; whirl=null; hammer=null; shields=[];
 
   const spawnGuard={list:[{x:player.x,y:player.y}],min:120};
+
+  if(L.whirl){
+    whirl={x:rand(150,VW-150), y:rand(270,450), R:165, rot:0};
+    spawnGuard.list.push(whirl);   // nothing solid sits in the middle of it
+  }
+  if(L.current){
+    // three streams, alternating direction, kept off the spawn row
+    const ys=[190,370,545];
+    ys.forEach((y,n)=>bands.push({y:y+rand(-25,25), h:92, dir:(n%2?-1:1)*(Math.random()<0.5?1:-1)}));
+    if(bands[0].dir===bands[1].dir) bands[1].dir*=-1;
+    if(bands[1].dir===bands[2].dir) bands[2].dir*=-1;
+  }
 
   for(let n=0;n<L.rocks;n++){
     const p=place(rocks.concat(kelps),96,54,spawnGuard);
@@ -378,22 +492,81 @@ function buildLevel(i){
     for(let s=0;s<9;s++) strands.push({ox:rand(-r*0.8,r*0.8),h:rand(r*1.2,r*2.0),ph:rand(0,6.283),w:rand(3.5,6.5)});
     kelps.push({x:p.x,y:p.y,r:r,strands:strands});
   }
+  // the pause button (bottom-left) and mute button (bottom-right) are never covered
+  const corners=[{x:VW-30,y:VH-30},{x:30,y:VH-30}];
+  const pearlAvoid={list:rocks.concat(whirl?[{x:whirl.x,y:whirl.y,eye:1}]:[]),min:56};
   for(let n=0;n<L.pearls;n++){
-    const p=place(pearls,74,42,{list:rocks,min:56},{bot:86,keepOut:{x:VW-30,y:VH-30,r:78}});
-    pearls.push({x:p.x,y:p.y,ph:rand(0,6.283),got:false});
+    let p;
+    for(let k=0;k<40;k++){
+      p=place(pearls,74,42,pearlAvoid,{bot:86,keepOut:{x:corners[0].x,y:corners[0].y,r:78}});
+      if(dist2(p.x,p.y,corners[1].x,corners[1].y)>=78*78) break;
+    }
+    pearls.push({x:p.x,y:p.y,ph:rand(0,6.283),got:false,
+                 clam:!!L.clams, ct:Math.floor(rand(0,CLAM_CYCLE))});
   }
+  for(let n=0;n<(L.shield||0);n++){
+    const p=place(pearls.concat(shields),90,50,{list:rocks,min:60},{bot:120});
+    shields.push({x:p.x,y:p.y,ph:rand(0,6.283)});
+  }
+  for(let n=0;n<(L.jelly||0);n++){
+    const p=place(jellies,110,40,{list:[{x:player.x,y:player.y}],min:170},{bot:140});
+    const a=rand(0,6.283), v=rand(0.35,0.7)*PACE;
+    jellies.push({x:p.x,y:p.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,ph:rand(0,6.283),r:15});
+  }
+  if(L.hammer) hammer={st:0, cd:200, t:0, x:-100, y:0, dir:1};
 
   sharks=[];
   for(let n=0;n<L.sharks;n++){
-    const sc = n===0 ? 1 : (L.pup||1);   // the second shark is a visibly smaller pup
+    // shark one is the big one (a Megalodon on the last level); the rest are smaller pups
+    const mega = n===0 && L.mega;
+    const sc = mega ? MEGA : n===0 ? 1 : (L.pup||1);
+    const spd = mega ? L.speed*0.92 : L.speed*(n===0?1:(L.pup||1));
     sharks.push({
-      x: n===0 ? 70 : VW-70, y: 120 + n*40,
-      a: Math.PI/2, spd:L.speed*sc*PACE, sc:sc, stun:0,
+      x: [70, VW-70, VW/2][n%3], y: 120 + n*40,
+      a: Math.PI/2, spd:spd*PACE, sc:sc, mega:mega, stun:0,
       lungeCd: rand(120,220), lungeState:0, lungeT:0, mouth:0, wob:rand(0,6.283)
     });
   }
   bubbles=[];
   for(let n=0;n<26;n++) bubbles.push({x:rand(0,VW),y:rand(0,VH),r:rand(1.4,4.2),sp:rand(0.25,0.9),ph:rand(0,6.283)});
+}
+
+/* ---------- twists ---------- */
+const CLAM_CYCLE=210;              // frames: ~2s open, ~1.3s shut
+function clamOpen(p){
+  const c=p.ct%CLAM_CYCLE;
+  if(c<14) return c/14;
+  if(c<130) return 1;
+  if(c<144) return 1-(c-130)/14;
+  return 0;
+}
+// how much the water itself pushes anything at (x,y): streams + whirlpool
+function flowAt(x,y){
+  let fx=0, fy=0;
+  for(const b of bands){
+    const dy=Math.abs(y-b.y);
+    if(dy<b.h/2) fx+=b.dir*cur.current*PACE*Math.min(1,(b.h/2-dy)/18);
+  }
+  if(whirl){
+    const dx=whirl.x-x, dy=whirl.y-y, d=Math.hypot(dx,dy);
+    if(d<whirl.R && d>2){
+      const k=1-d/whirl.R, pull=cur.whirl*1.55*k*PACE;
+      fx+=dx/d*pull*0.55 - dy/d*pull;      // inward + round and round
+      fy+=dy/d*pull*0.55 + dx/d*pull;
+    }
+  }
+  return {x:fx,y:fy};
+}
+// a bite (or a hammerhead) reached the swimmer. A bubble shield eats it instead.
+function bitten(by){
+  if(player.shield){
+    player.shield=false; player.invuln=80;
+    sfx.pop(); burst(player.x,player.y,'#BFF4FF',22,4);
+    if(by){ by.stun=70; by.a=normAngle(by.a+Math.PI); by.lungeState=0; by.lungeCd=rand(160,240); }
+    return false;
+  }
+  caught();
+  return true;
 }
 
 /* ---------- particles ---------- */
@@ -436,16 +609,19 @@ function update(){
   if(keys.up) ay-=1; if(keys.down) ay+=1;
   if(ax||ay){ const m=Math.hypot(ax,ay); tx=player.x+ax/m*200; ty=player.y+ay/m*200; }
 
+  const topSpeed=PLAYER_SPEED*(player.sting>0?0.5:1);   // a jellyfish sting slows you
   if(tx!==null){
     const dx=tx-player.x, dy=ty-player.y, d=Math.hypot(dx,dy);
     if(d>3){
       const ease=clamp(d/60,0.25,1);
-      player.vx+=(dx/d*PLAYER_SPEED*ease-player.vx)*0.24;
-      player.vy+=(dy/d*PLAYER_SPEED*ease-player.vy)*0.24;
+      player.vx+=(dx/d*topSpeed*ease-player.vx)*0.24;
+      player.vy+=(dy/d*topSpeed*ease-player.vy)*0.24;
     } else { player.vx*=0.8; player.vy*=0.8; }
   } else { player.vx*=0.9; player.vy*=0.9; }
 
   player.x+=player.vx; player.y+=player.vy;
+  if(state===S.PLAY && freeze<=0){ const f=flowAt(player.x,player.y); player.x+=f.x; player.y+=f.y; }
+  if(player.sting>0) player.sting--;
   player.x=clamp(player.x,player.r,VW-player.r);
   player.y=clamp(player.y,player.r+8,VH-player.r);
 
@@ -461,10 +637,59 @@ function update(){
 
   if(state!==S.PLAY) return;   // title screen: swim around, nothing can hurt you
 
+  flowT+=0.016;
+  if(whirl) whirl.rot+=0.035*PACE;
+
+  /* ---- bubble shields ---- */
+  for(let i=shields.length-1;i>=0;i--){
+    const b=shields[i]; b.ph+=0.05;
+    if(dist2(player.x,player.y,b.x,b.y)<32*32){
+      shields.splice(i,1); player.shield=true;
+      sfx.shield(); burst(b.x,b.y,'#BFF4FF',18,3.2);
+    }
+  }
+
+  /* ---- jellyfish: drift, bounce, sting ---- */
+  for(const j of jellies){
+    j.ph+=0.06;
+    if(freeze<=0){
+      const f=flowAt(j.x,j.y);
+      j.x+=j.vx+f.x*0.6; j.y+=j.vy+Math.sin(j.ph)*0.35+f.y*0.6;
+      if(j.x<24){j.x=24;j.vx=Math.abs(j.vx);} if(j.x>VW-24){j.x=VW-24;j.vx=-Math.abs(j.vx);}
+      if(j.y<80){j.y=80;j.vy=Math.abs(j.vy);} if(j.y>VH-40){j.y=VH-40;j.vy=-Math.abs(j.vy);}
+    }
+    if(player.sting<=0 && player.invuln<=0 && dist2(player.x,player.y,j.x,j.y)<(j.r+player.r-3)*(j.r+player.r-3)){
+      player.sting=80; sfx.sting(); burst(player.x,player.y,'#E59BFF',14,3);
+    }
+  }
+
+  /* ---- hammerhead: warn the row, then dash straight across it ---- */
+  if(hammer && freeze<=0){
+    const h=hammer;
+    if(h.st===0){
+      if(--h.cd<=0){
+        h.st=1; h.t=72; h.dir=Math.random()<0.5?1:-1;
+        h.y=clamp(player.y,100,VH-70); sfx.warn();
+      }
+    } else if(h.st===1){
+      if(--h.t<=0){ h.st=2; h.x=h.dir>0?-90:VW+90; sfx.whoosh(); }
+    } else {
+      h.x+=h.dir*8.6*PACE;
+      if((h.dir>0 && h.x>VW+110) || (h.dir<0 && h.x<-110)){ h.st=0; h.cd=rand(150,230); }
+      else if(player.invuln<=0 && player.alive){
+        const hx=h.x+h.dir*34;
+        if(dist2(player.x,player.y,hx,h.y)<26*26 || dist2(player.x,player.y,h.x,h.y)<21*21){
+          if(bitten(null)) return;
+        }
+      }
+    }
+  }
+
   /* ---- pearls ---- */
   for(const p of pearls){
     if(p.got) continue;
     p.ph+=0.045;
+    if(p.clam){ p.ct++; if(clamOpen(p)<0.5) continue; }   // shut clam: wait for it
     if(dist2(player.x,player.y,p.x,p.y) < 26*26){
       p.got=true;
       const n=pearls.filter(q=>q.got).length;
@@ -487,7 +712,8 @@ function update(){
     if(L.lunge && s.stun<=0){
       if(s.lungeState===0){
         s.lungeCd--;
-        if(s.lungeCd<=0 && dist2(s.x,s.y,player.x,player.y)<190*190){ s.lungeState=1; s.lungeT=28; }
+        const reach=190*(s.mega?1.3:1);
+        if(s.lungeCd<=0 && dist2(s.x,s.y,player.x,player.y)<reach*reach){ s.lungeState=1; s.lungeT=28; }
       } else if(s.lungeState===1){
         s.lungeT--; spd*=0.18; s.mouth=lerp(s.mouth,1,0.18);
         if(s.lungeT<=0){ s.lungeState=2; s.lungeT=30; }
@@ -510,13 +736,15 @@ function update(){
     const near=Math.hypot(player.x-s.x, player.y-s.y);
     // Once it's this close the shark has committed: it can barely steer, so a
     // last-moment dodge always beats it. Every death is "too slow", never "unfair".
-    const turn = (near<58 ? L.turn*0.10
+    const sc0=s.sc||1;
+    const turn = (near<58*sc0 ? L.turn*0.10
                : s.lungeState===1 ? L.turn*0.35
-               : L.turn) * PACE;
+               : L.turn) * PACE * (s.mega?0.8:1);
     s.a += clamp(normAngle(want-s.a), -turn, turn);
 
     s.x+=Math.cos(s.a)*spd;
     s.y+=Math.sin(s.a)*spd;
+    if(bands.length || whirl){ const f=flowAt(s.x,s.y); s.x+=f.x; s.y+=f.y; }
 
     // walls
     if(s.x<24){ s.x=24; s.a=normAngle(Math.PI-s.a); }
@@ -542,7 +770,7 @@ function update(){
       const jawX =s.x+Math.cos(s.a)*16*sc, jawY =s.y+Math.sin(s.a)*16*sc;
       if(dist2(player.x,player.y,noseX,noseY) < (24*sc)*(24*sc) ||
          dist2(player.x,player.y,jawX,jawY)  < (25*sc)*(25*sc)){
-        return caught();
+        if(bitten(s)) return;
       }
     }
   }
@@ -628,8 +856,159 @@ function drawKelp(k){
   ctx.restore();
 }
 
+function drawBands(){
+  for(const b of bands){
+    ctx.fillStyle='rgba(190,240,255,.06)';
+    ctx.fillRect(0,b.y-b.h/2,VW,b.h);
+    ctx.strokeStyle='rgba(215,248,255,.30)'; ctx.lineWidth=2; ctx.lineCap='round';
+    const sp=flowT*95*cur.current*b.dir;
+    for(let k=0;k<9;k++){
+      const x=(((k*67+sp)%(VW+60))+VW+60)%(VW+60)-30;
+      const y=b.y-b.h/2+12+((k*29)%(b.h-24));
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x-b.dir*26,y); ctx.stroke();
+      // a chevron on every third streak shows which way it flows
+      if(k%3===0){ ctx.beginPath(); ctx.moveTo(x-b.dir*6,y-5); ctx.lineTo(x,y); ctx.lineTo(x-b.dir*6,y+5); ctx.stroke(); }
+    }
+  }
+}
+
+function drawWhirl(){
+  const w=whirl;
+  ctx.save(); ctx.translate(w.x,w.y);
+  const g=ctx.createRadialGradient(0,0,4,0,0,w.R);
+  g.addColorStop(0,'rgba(0,8,16,.55)'); g.addColorStop(0.35,'rgba(0,20,34,.22)'); g.addColorStop(1,'rgba(0,20,34,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,w.R,0,6.283); ctx.fill();
+  ctx.lineCap='round';
+  for(let arm=0;arm<4;arm++){
+    ctx.beginPath();
+    for(let t=0;t<=1.0001;t+=0.05){
+      const a=arm*Math.PI/2 - w.rot - t*4.2, r=8+t*(w.R-12);
+      const x=Math.cos(a)*r, y=Math.sin(a)*r;
+      if(t===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle='rgba(205,245,255,.26)'; ctx.lineWidth=3; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawClam(p){
+  const o=clamOpen(p);
+  ctx.save(); ctx.translate(p.x,p.y+9);
+  ctx.fillStyle='#C98FA6'; ctx.strokeStyle='rgba(60,20,40,.5)'; ctx.lineWidth=1.4;
+  // bottom shell
+  ctx.beginPath(); ctx.ellipse(0,0,17,8,0,0,Math.PI); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // top shell lifts up behind the pearl when open, covers it when shut
+  ctx.save(); ctx.translate(0,-o*14); ctx.scale(1,1+o*0.25);
+  ctx.fillStyle='#E7B3C6';
+  ctx.beginPath(); ctx.ellipse(0,0,17,11,0,Math.PI,Math.PI*2); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle='rgba(120,50,80,.45)'; ctx.lineWidth=1;
+  for(let k=-2;k<=2;k++){ ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(k*6,-10); ctx.stroke(); }
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawShieldItem(b){
+  const r=16+Math.sin(b.ph*1.4)*2, y=b.y+Math.sin(b.ph)*3;
+  ctx.save(); ctx.translate(b.x,y);
+  const g=ctx.createRadialGradient(0,0,2,0,0,r+12);
+  g.addColorStop(0,'rgba(190,245,255,.0)'); g.addColorStop(0.6,'rgba(190,245,255,.25)'); g.addColorStop(1,'rgba(190,245,255,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,r+12,0,6.283); ctx.fill();
+  ctx.strokeStyle='rgba(225,252,255,.95)'; ctx.lineWidth=2.4;
+  ctx.beginPath(); ctx.arc(0,0,r,0,6.283); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,.9)';
+  ctx.beginPath(); ctx.arc(-r*0.4,-r*0.4,2.6,0,6.283); ctx.fill();
+  ctx.restore();
+}
+
+function drawJelly(j){
+  ctx.save(); ctx.translate(j.x,j.y);
+  const pulse=1+Math.sin(j.ph*2)*0.08;
+  const g=ctx.createRadialGradient(0,-2,2,0,-2,j.r*2.2);
+  g.addColorStop(0,'rgba(229,155,255,.45)'); g.addColorStop(1,'rgba(229,155,255,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,-2,j.r*2.2,0,6.283); ctx.fill();
+  // tentacles
+  ctx.strokeStyle='rgba(240,190,255,.75)'; ctx.lineWidth=1.8; ctx.lineCap='round';
+  for(let k=0;k<5;k++){
+    const x0=(k-2)*5;
+    ctx.beginPath(); ctx.moveTo(x0,2);
+    ctx.quadraticCurveTo(x0+Math.sin(j.ph*1.5+k)*6, 14, x0+Math.sin(j.ph+k)*4, 24+(k%2)*5);
+    ctx.stroke();
+  }
+  // bell
+  ctx.fillStyle='rgba(236,170,255,.85)';
+  ctx.beginPath(); ctx.ellipse(0,0,j.r*pulse,j.r*0.85/pulse,0,Math.PI,Math.PI*2);
+  ctx.quadraticCurveTo(0,6,-j.r*pulse,0); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.55)';
+  ctx.beginPath(); ctx.ellipse(-4,-6,3.5,2.2,-0.4,0,6.283); ctx.fill();
+  ctx.restore();
+}
+
+function drawHammerWarn(){
+  const h=hammer;
+  if(h.st!==1) return;
+  const a=0.16+Math.abs(Math.sin(tAmb*10))*0.16;
+  ctx.fillStyle='rgba(255,107,74,'+a+')';
+  ctx.fillRect(0,h.y-20,VW,40);
+  // arrows show which side it comes from
+  ctx.strokeStyle='rgba(255,233,168,'+(a*3)+')'; ctx.lineWidth=4; ctx.lineCap='round'; ctx.lineJoin='round';
+  for(let k=0;k<3;k++){
+    const x=h.dir>0 ? 16+k*18 : VW-16-k*18;
+    ctx.beginPath(); ctx.moveTo(x-h.dir*6,h.y-10); ctx.lineTo(x+h.dir*4,h.y); ctx.lineTo(x-h.dir*6,h.y+10); ctx.stroke();
+  }
+}
+
+function drawHammer(){
+  const h=hammer;
+  if(h.st!==2) return;
+  ctx.save(); ctx.translate(h.x,h.y); if(h.dir<0) ctx.scale(-1,1);
+  ctx.fillStyle='rgba(0,0,0,.16)';
+  ctx.beginPath(); ctx.ellipse(-4,8,40,12,0,0,6.283); ctx.fill();
+  ctx.fillStyle='#55705F';
+  ctx.beginPath();                                 // tail
+  ctx.moveTo(-26,0); ctx.quadraticCurveTo(-40,-10,-52,-24); ctx.quadraticCurveTo(-44,-6,-42,0);
+  ctx.quadraticCurveTo(-44,6,-47,14); ctx.quadraticCurveTo(-38,7,-26,3); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(4,-10); ctx.quadraticCurveTo(-2,-30,-14,-9); ctx.closePath(); ctx.fill();
+  const g=ctx.createLinearGradient(0,-14,0,13);
+  g.addColorStop(0,'#46604F'); g.addColorStop(0.55,'#7E9883'); g.addColorStop(1,'#E8EFE6');
+  ctx.fillStyle=g;
+  ctx.beginPath();                                 // body
+  ctx.moveTo(32,-4); ctx.bezierCurveTo(20,-13,0,-14,-14,-11); ctx.bezierCurveTo(-22,-8,-26,-5,-28,-3);
+  ctx.lineTo(-28,4); ctx.bezierCurveTo(-18,10,4,13,32,4); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#4E6A57';                         // the hammer
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(28,-21,12,42,6) : ctx.rect(28,-21,12,42); ctx.fill();
+  ctx.fillStyle='#0B1A22';
+  ctx.beginPath(); ctx.arc(34,-18,2.6,0,6.283); ctx.fill();
+  ctx.beginPath(); ctx.arc(34,18,2.6,0,6.283); ctx.fill();
+  ctx.restore();
+}
+
+// lights out: a pool of light around the swimmer, darkness beyond
+function drawDark(){
+  const R=cur.dark;
+  const g=ctx.createRadialGradient(player.x,player.y,R*0.45,player.x,player.y,R);
+  g.addColorStop(0,'rgba(0,4,9,0)'); g.addColorStop(1,'rgba(0,4,9,.95)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,VW,VH);
+}
+// what still shows in the dark: shark eyes, and the coral glow of a lunge
+function drawEyes(s){
+  const sc=s.sc||1;
+  const ex=s.x+(Math.cos(s.a)*30+Math.sin(s.a)*6)*sc, ey=s.y+(Math.sin(s.a)*30-Math.cos(s.a)*6)*sc;
+  ctx.fillStyle='rgba(255,236,190,.9)';
+  ctx.beginPath(); ctx.arc(ex,ey,2.4*Math.sqrt(sc),0,6.283); ctx.fill();
+  ctx.fillStyle='rgba(255,236,190,.18)';
+  ctx.beginPath(); ctx.arc(ex,ey,7*Math.sqrt(sc),0,6.283); ctx.fill();
+  if(s.lungeState===1){
+    ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.a); ctx.scale(sc,sc);
+    ctx.globalAlpha=0.45+Math.sin(tAmb*22)*0.22;
+    ctx.strokeStyle=CORAL; ctx.lineWidth=4;
+    ctx.beginPath(); ctx.ellipse(0,0,50,26,0,0,6.283); ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function drawPearl(p){
-  const bob=Math.sin(p.ph)*3;
+  if(p.clam && clamOpen(p)<0.35) return;
+  const bob=p.clam ? 0 : Math.sin(p.ph)*3;
   const glow=9+depth*10+Math.sin(p.ph*1.6)*2;
   ctx.save(); ctx.translate(p.x,p.y+bob);
   const g=ctx.createRadialGradient(0,0,1,0,0,glow+11);
@@ -707,6 +1086,26 @@ function drawSwimmer(){
   ctx.beginPath(); ctx.arc(19.3,-3.3,0.8,0,6.283); ctx.fill();
 
   ctx.restore();
+
+  // stung: little purple sparks fizz around you while you're slowed
+  if(player.sting>0){
+    ctx.strokeStyle='rgba(236,170,255,'+(0.4+0.4*Math.abs(Math.sin(tAmb*14)))+')';
+    ctx.lineWidth=1.8; ctx.lineCap='round';
+    for(let k=0;k<4;k++){
+      const a=tAmb*5+k*1.57, r=20;
+      const x=player.x+Math.cos(a)*r, y=player.y+Math.sin(a)*r;
+      ctx.beginPath(); ctx.moveTo(x-4,y-3); ctx.lineTo(x,y+1); ctx.lineTo(x-2,y+2); ctx.lineTo(x+3,y+5); ctx.stroke();
+    }
+  }
+  // bubble shield
+  if(player.shield){
+    const r=24+Math.sin(tAmb*4)*1.5;
+    ctx.strokeStyle='rgba(205,248,255,.8)'; ctx.lineWidth=2.2;
+    ctx.beginPath(); ctx.arc(player.x,player.y,r,0,6.283); ctx.stroke();
+    ctx.fillStyle='rgba(205,248,255,.10)'; ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.85)';
+    ctx.beginPath(); ctx.arc(player.x-r*0.45,player.y-r*0.5,2.6,0,6.283); ctx.fill();
+  }
 }
 
 function drawShark(s){
@@ -773,6 +1172,13 @@ function drawShark(s){
   // gills
   ctx.strokeStyle='rgba(20,44,60,.5)'; ctx.lineWidth=1.4;
   for(let i=0;i<4;i++){ ctx.beginPath(); ctx.moveTo(14-i*5,-9); ctx.lineTo(12-i*5,-1); ctx.stroke(); }
+  // the Megalodon: old battle scars
+  if(s.mega){
+    ctx.strokeStyle='rgba(225,236,240,.55)'; ctx.lineWidth=1.3;
+    ctx.beginPath(); ctx.moveTo(-2,-11); ctx.lineTo(8,-3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8,-10); ctx.lineTo(2,-2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(24,-11); ctx.lineTo(20,-5); ctx.stroke();
+  }
   // eye
   ctx.fillStyle='#0B1A22'; ctx.beginPath(); ctx.arc(30,-6,3.1,0,6.283); ctx.fill();
   ctx.restore();
@@ -784,17 +1190,27 @@ function render(){
     const m=shakeT/14;
     ctx.translate(rand(-7,7)*m, rand(-7,7)*m);
   }
+  const dark=!!cur.dark && state!==S.TITLE && state!==S.SELECT;
   bg();
+  if(bands.length) drawBands();
+  if(whirl) drawWhirl();
   for(const k of kelps) drawKelp(k);
   for(const r of rocks) drawRock(r);
-  for(const p of pearls) if(!p.got) drawPearl(p);
+  for(const p of pearls) if(!p.got && p.clam) drawClam(p);
+  if(!dark){
+    for(const p of pearls) if(!p.got) drawPearl(p);
+    for(const b of shields) drawShieldItem(b);
+  }
   drawBubbles();
   for(const p of bits){
     ctx.globalAlpha=Math.max(0,p.life);
     ctx.fillStyle=p.c; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.283); ctx.fill();
   }
   ctx.globalAlpha=1;
+  if(!dark) for(const j of jellies) drawJelly(j);
+  if(hammer) drawHammerWarn();
   for(const s of sharks) drawShark(s);
+  if(hammer) drawHammer();
   drawSwimmer();
 
   // vignette deepens with the water
@@ -802,6 +1218,15 @@ function render(){
   v.addColorStop(0,'rgba(0,0,0,0)');
   v.addColorStop(1,'rgba(1,12,22,'+(0.30+depth*0.42)+')');
   ctx.fillStyle=v; ctx.fillRect(0,0,VW,VH);
+
+  if(dark){
+    drawDark();
+    // pearls, jellyfish and bubbles glow on their own; sharks show only their eyes
+    for(const p of pearls) if(!p.got) drawPearl(p);
+    for(const b of shields) drawShieldItem(b);
+    for(const j of jellies) drawJelly(j);
+    for(const s of sharks) drawEyes(s);
+  }
 
   if(flashT>0){ ctx.fillStyle='rgba(255,107,74,'+(flashT/18*0.4)+')'; ctx.fillRect(0,0,VW,VH); }
 }
@@ -827,10 +1252,14 @@ function frame(now){
    ========================================================================= */
 const el=id=>document.getElementById(id);
 const ovTitle=el('ovTitle'), ovLevel=el('ovLevel'), ovCaught=el('ovCaught'),
-      ovOver=el('ovOver'), ovWin=el('ovWin'), hud=el('hud'), goFlash=el('goFlash');
+      ovOver=el('ovOver'), ovWin=el('ovWin'), ovSelect=el('ovSelect'), ovPause=el('ovPause'),
+      hud=el('hud'), goFlash=el('goFlash'), starFlash=el('starFlash'), btnPause=el('btnPause');
 function show(o){ o.classList.add('show'); }
 function hide(o){ o.classList.remove('show'); }
-function hideAll(){ [ovTitle,ovLevel,ovCaught,ovOver,ovWin].forEach(hide); }
+function hideAll(){ [ovTitle,ovLevel,ovCaught,ovOver,ovWin,ovSelect,ovPause].forEach(hide); }
+// every delayed step checks it still belongs to the current run of the current level
+let runId=0, clearing=false;
+const later=(fn,ms)=>{ const id=runId; setTimeout(()=>{ if(id===runId) fn(); },ms); };
 
 const HEART='<svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.2C5.5 15.6 2.4 12 2.4 8.2A5 5 0 0 1 12 5.6a5 5 0 0 1 9.6 2.6c0 3.8-3.1 7.4-9.6 13z"/></svg>';
 function updateHUD(){
@@ -840,18 +1269,47 @@ function updateHUD(){
   for(let i=0;i<START_LIVES;i++) h+=HEART.replace('class="heart"', i<lives?'class="heart"':'class="heart spent"');
   el('hudLives').innerHTML=h;
 }
+const starHTML=(n,of)=>{ let s=''; for(let i=0;i<(of||3);i++) s+= i<n ? '<em>&#9733;</em>' : '&#9733;'; return s; };
 
+/* ---------- level select ---------- */
+function buildGrid(){
+  let h='';
+  for(let i=0;i<NL;i++){
+    const open=isOpen(i), L=LEVELS[i];
+    const cls='lvl'+(i>=12?' deep':'')+(i+1===save.unlocked && !save.stars[i]?' next':'');
+    h+='<button class="'+cls+'" data-l="'+i+'"'+(open?'':' disabled')+' aria-label="Level '+(i+1)+(L.name?' '+L.name:'')+'">'
+      +'<b>'+(open?(i+1):'&#128274;')+'</b>'
+      +(L.icon && open ? '<i>'+L.icon+'</i>' : '')
+      +'<span class="st">'+starHTML(save.stars[i]||0)+'</span></button>';
+  }
+  el('grid').innerHTML=h;
+}
+el('grid').addEventListener('click',e=>{
+  const b=e.target && e.target.closest ? e.target.closest('[data-l]') : null;
+  if(!b || b.disabled) return;
+  audio(); armBackGuard(); playLevel(parseInt(b.getAttribute('data-l'),10));
+});
+function openSelect(){
+  runId++;
+  state=S.SELECT; hud.hidden=true; btnPause.hidden=true;
+  attract();
+  buildGrid(); hideAll(); show(ovSelect);
+}
+
+/* ---------- a level ---------- */
+function playLevel(i){ lives=START_LIVES; startLevel(i); }   // fresh hearts
 function startLevel(i){
+  runId++; clearing=false;
   levelIdx=i;
   buildLevel(i);
   state=S.INTRO;
-  hud.hidden=false; updateHUD();
+  hud.hidden=false; btnPause.hidden=false; updateHUD();
   hideAll();
   el('lvZone').textContent=zoneFor(i);
   el('lvTitle').textContent='Level '+(i+1);
-  el('lvDepth').style.width=(4+ (i/(LEVELS.length-1))*96)+'%';
+  el('lvDepth').style.width=(4+ (i/(NL-1))*96)+'%';
   show(ovLevel);
-  setTimeout(()=>{
+  later(()=>{
     hide(ovLevel);
     state=S.PLAY;
     freeze=45;
@@ -860,18 +1318,27 @@ function startLevel(i){
 }
 
 function levelClear(){
-  state=S.INTRO;
+  state=S.INTRO; clearing=true;
   sfx.clear();
   burst(player.x,player.y,SUN,26,4.5);
-  if(levelIdx+1>=LEVELS.length){
-    try{ localStorage.setItem('egw.best',String(LEVELS.length)); }catch(e){}
-    best=LEVELS.length;
-    setTimeout(()=>{ state=S.WIN; hud.hidden=true; hideAll(); show(ovWin); sfx.win(); }, 700);
+  const stars=lives;                         // hearts left = stars
+  save.stars[levelIdx]=Math.max(save.stars[levelIdx]||0,stars);
+  if(levelIdx+2>save.unlocked) save.unlocked=Math.min(NL,levelIdx+2);
+  persist();
+  const flashStars=k=>{ let s=''; for(let i=0;i<3;i++) s+= i<k ? '&#9733;' : '<span class="off">&#9733;</span>'; starFlash.innerHTML=s; };
+  flashStars(0);
+  starFlash.classList.remove('fire'); void starFlash.offsetWidth; starFlash.classList.add('fire');
+  for(let k=1;k<=stars;k++) later(()=>{ flashStars(k); sfx.star(k); }, 160*k);
+  if(levelIdx+1>=NL){
+    later(()=>{
+      state=S.WIN; hud.hidden=true; btnPause.hidden=true; hideAll();
+      el('winStars').innerHTML='&#9733; '+totalStars()+' / '+(NL*3);
+      show(ovWin); sfx.win();
+    }, 1300);
     return;
   }
   const next=levelIdx+1;
-  if(next+1>best){ best=next+1; try{ localStorage.setItem('egw.best',String(best)); }catch(e){} }
-  setTimeout(()=>startLevel(next), 850);
+  later(()=>playLevel(next), 1300);
 }
 
 function caught(){
@@ -883,11 +1350,10 @@ function caught(){
   shakeT=14; flashT=18;
   state=S.CAUGHT;
   updateHUD();
-  setTimeout(()=>{
+  later(()=>{
     if(lives<=0){
-      state=S.OVER; hud.hidden=true; hideAll();
+      state=S.OVER; hideAll();
       el('overLine').textContent='Level '+(levelIdx+1);
-      el('overBest').textContent = best>levelIdx+1 ? 'Best · Level '+best : '';
       show(ovOver); sfx.over();
     } else {
       hideAll(); show(ovCaught);
@@ -895,10 +1361,33 @@ function caught(){
   }, 780);
 }
 
-function newGame(){
-  lives=START_LIVES;
-  startLevel(0);
+function newGame(){ playLevel(0); }
+
+/* ---------- pause ---------- */
+function pause(){
+  if((state!==S.PLAY && state!==S.INTRO) || clearing) return;
+  runId++;                                  // a pending "Go!" must not unpause by itself
+  state=S.PAUSE; ptr=null; target=null;
+  hideAll(); show(ovPause);
 }
+function resume(){
+  if(state!==S.PAUSE) return;
+  hideAll(); state=S.PLAY; freeze=Math.max(freeze,30);
+  goFlash.classList.remove('fire'); void goFlash.offsetWidth; goFlash.classList.add('fire');
+}
+
+/* ---------- the phone's back gesture ----------
+   Swiping in from the left/right edge of an Android phone is "back", which
+   closes a tab opened from a link. Keep one spare history entry so that swipe
+   lands here and just pauses. It is re-armed on the next touch (browsers only
+   honour entries added during a tap). Two quick backs still leave. */
+let guarded=false;
+function armBackGuard(){
+  if(guarded) return;
+  try{ history.pushState({egw:1},''); guarded=true; }catch(e){}
+}
+window.addEventListener('popstate',()=>{ guarded=false; pause(); });
+try{ document.addEventListener('visibilitychange',()=>{ if(document.hidden) pause(); }); }catch(e){}
 
 /* ---------- input ---------- */
 function toArena(e){
@@ -906,23 +1395,27 @@ function toArena(e){
   return { x:(e.clientX-r.left)/r.width*VW, y:(e.clientY-r.top)/r.height*VH, touch:e.pointerType==='touch' };
 }
 function aimAt(q){
-  let y=q.y;
+  let x=q.x, y=q.y;
   if(q.touch){
     // Lift the swimmer above the fingertip so a small thumb never covers it —
     // but ease that offset back to zero near the bottom edge, or the lowest
     // strip of the arena (and any pearl in it) becomes impossible to reach.
     y -= 62 * clamp((VH-q.y)/130, 0, 1);
+    // Stretch sideways so the swimmer touches the wall before the finger
+    // reaches the screen edge, where the phone's back-swipe lives.
+    x = (q.x-EDGE)/(VW-2*EDGE)*VW;
   }
-  return {x:clamp(q.x,0,VW), y:clamp(y,0,VH)};
+  return {x:clamp(x,0,VW), y:clamp(y,0,VH)};
 }
 function liftPointer(){ ptr=null; target=null; }
-cv.addEventListener('pointerdown',e=>{ audio(); cv.setPointerCapture(e.pointerId); ptr=toArena(e); e.preventDefault(); });
+cv.addEventListener('pointerdown',e=>{ audio(); armBackGuard(); cv.setPointerCapture(e.pointerId); ptr=toArena(e); e.preventDefault(); });
 cv.addEventListener('pointermove',e=>{ if(e.buttons||e.pointerType==='touch') ptr=toArena(e); });
 cv.addEventListener('pointerup',liftPointer);
 cv.addEventListener('pointercancel',liftPointer);
 
 const KEYMAP={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',a:'left',d:'right',w:'up',s:'down'};
 window.addEventListener('keydown',e=>{
+  if(e.key==='Escape' || e.key==='p'){ state===S.PAUSE ? resume() : pause(); return; }
   const k=KEYMAP[e.key]||KEYMAP[e.key.toLowerCase()];
   if(k){ keys[k]=true; ptr=null; target=null; audio(); e.preventDefault(); }
 });
@@ -931,10 +1424,15 @@ window.addEventListener('keyup',e=>{
   if(k) keys[k]=false;
 });
 
-el('btnStart').addEventListener('click',()=>{ audio(); newGame(); });
+el('btnStart').addEventListener('click',()=>{ audio(); armBackGuard(); openSelect(); });
+el('btnSelBack').addEventListener('click',()=>{ hideAll(); state=S.TITLE; attract(); refreshTitle(); show(ovTitle); });
 el('btnRetry').addEventListener('click',()=>{ hideAll(); startLevel(levelIdx); });
-el('btnRestart').addEventListener('click',()=>{ hideAll(); newGame(); });
-el('btnPlayAgain').addEventListener('click',()=>{ hideAll(); newGame(); });
+el('btnRestart').addEventListener('click',()=>{ hideAll(); playLevel(levelIdx); });
+el('btnPlayAgain').addEventListener('click',openSelect);
+el('btnOverLevels').addEventListener('click',openSelect);
+el('btnPauseLevels').addEventListener('click',openSelect);
+el('btnResume').addEventListener('click',()=>{ armBackGuard(); resume(); });
+btnPause.addEventListener('click',()=>{ armBackGuard(); pause(); });
 
 const btnMute=el('btnMute');
 btnMute.addEventListener('click',()=>{
@@ -944,18 +1442,22 @@ btnMute.addEventListener('click',()=>{
 });
 
 /* ---------- attract mode ---------- */
+let cruising=false;
 function attract(){
-  depth=0.12;
+  depth=0.12; cur={};
   rocks=[]; kelps=[]; pearls=[]; bits=[];
+  jellies=[]; bands=[]; whirl=null; hammer=null; shields=[];
   // no words explain the controls — the swimmer just follows your finger here,
   // with the shark cruising past harmlessly, before you ever press Play
-  player.alive=true; player.invuln=0;
+  player.alive=true; player.invuln=0; player.sting=0; player.shield=false;
   player.x=VW*0.5; player.y=VH*0.84; player.vx=player.vy=0; player.facing=-Math.PI/2;
-  sharks=[{x:118,y:VH*0.62,a:0,spd:1.5,stun:0,lungeCd:9e9,lungeState:0,lungeT:0,mouth:0,wob:0}];
+  sharks=[{x:118,y:VH*0.62,a:0,spd:1.5,sc:1,stun:0,lungeCd:9e9,lungeState:0,lungeT:0,mouth:0,wob:0}];
   bubbles=[];
   for(let n=0;n<26;n++) bubbles.push({x:rand(0,VW),y:rand(0,VH),r:rand(1.4,4.2),sp:rand(0.25,0.9),ph:rand(0,6.283)});
+  if(cruising) return;
+  cruising=true;
   (function cruise(){
-    if(state!==S.TITLE) return;
+    if(state!==S.TITLE && state!==S.SELECT){ cruising=false; return; }
     const s=sharks[0];
     if(s){
       s.x+=1.35*PACE; s.y=VH*0.62+Math.sin(s.x*0.012)*54;
@@ -966,7 +1468,11 @@ function attract(){
   })();
 }
 
-el('bestLine').textContent = best>1 ? 'Best · Level '+best : '';
+function refreshTitle(){
+  const t=totalStars();
+  el('bestLine').textContent = t ? '★ '+t+' / '+(NL*3) : (save.unlocked>1 ? 'Best · Level '+save.unlocked : '');
+}
+refreshTitle();
 resize();
 attract();
 requestAnimationFrame(frame);

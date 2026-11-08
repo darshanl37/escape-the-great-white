@@ -1,8 +1,21 @@
 # escape-the-great-white
 
-A twelve-level underwater chase game for young kids. One HTML file, no
-dependencies, no build step. Swim away from the great white, collect every
-glowing pearl to clear a level, five lives before it resets to level one.
+A twenty-level underwater chase game for young kids. One HTML file, no
+dependencies, no build step. Swim away from the great white and collect every
+glowing pearl to clear a level. Three hearts per level; clearing a level
+unlocks the next, and you can replay any open level from the level select.
+Hearts left at the end become stars.
+
+Levels 13-20 each add one twist: jellyfish that sting (slow you down),
+riptide currents, a hammerhead that dashes across a warned row, pearls in
+clams that open and shut, lights out, a whirlpool, a shark pack, and the
+Megalodon. Bubble shields block one bite each.
+
+On phones, a swipe in from the screen edge is the system "back" gesture. The
+game keeps a spare history entry so that swipe pauses instead of closing the
+tab, and touch is stretched sideways so the swimmer reaches each wall before
+the finger reaches the screen edge. `?all` in the URL opens every level for
+that visit.
 
 Built for touch first: hold a finger anywhere and the swimmer follows it.
 Keyboard (arrows / WASD) works too.
@@ -74,7 +87,7 @@ node test/run.js
 ```
 
 Runs the real game script in a Node vm against a stub DOM, a stub 2D context
-and a virtual clock. It checks that all twelve levels render, that the level
+and a virtual clock. It checks that all twenty levels render, that the level
 and lives state machine advances and resets, and that the level table stays
 sane.
 
